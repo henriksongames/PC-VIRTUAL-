@@ -1,0 +1,46 @@
+name: Build e Provisionamento de VM Gamer (High Performance)
+
+on:
+  workflow_dispatch:
+    inputs:
+      game_id:
+        description: 'App ID do jogo na Steam (ex: 730 para CS:GO/CS2)'
+        required: false
+        default: '730'
+
+jobs:
+  build-gaming-environment:
+    # Para performance máxima com GPU, utilize um runner Windows dedicado com GPU
+    # Exemplo: runs-on: [self-hosted, windows, gpu]
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: Otimizar Configurações do Sistema e Memória Virtuais
+        run: |
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'PagingFiles' -Value 'C:\pagefile.sys 16384 32768'
+          Write-Output "Memória virtual expandida para suportar cargas pesadas."
+
+      - name: Instalar Dependências Gráficas e Runtime
+        run: |
+          choco install directx -y
+          choco install vcredist-all -y
+          choco install dotnet-desktopruntime -y
+
+      - name: Instalar e Configurar SteamCMD
+        run: |
+          New-Item -Path "C:\SteamCMD" -ItemType Directory -Force
+          Invoke-WebRequest -Uri "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip" -OutFile "C:\SteamCMD\steamcmd.zip"
+          Expand-Archive -Path "C:\SteamCMD\steamcmd.zip" -DestinationPath "C:\SteamCMD" -Force
+          Remove-Item "C:\SteamCMD\steamcmd.zip"
+
+      - name: Baixar Dependências do Jogo Especificado
+        run: |
+          & "C:\SteamCMD\steamcmd.exe" +login anonymous +app_update ${{ github.event.inputs.game_id }} validate +quit
+
+      - name: Status de Recursos do Runner
+        run: |
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors
+          Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum | Select-Object @{N="TotalRAM_GB";E={$_.Sum / 1GB}}
